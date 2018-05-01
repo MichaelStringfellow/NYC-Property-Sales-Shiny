@@ -1,0 +1,145 @@
+---
+title: "NYC property sale-data cleaning"
+author: "phoebezhou"
+date: "4/30/2018"
+output: html_document
+---
+
+
+#### Preprocess
+
+Load libraries
+```{r message=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(rgdal) #read Geojson file
+library(tigris) #geo_join
+library(plotly)
+library(shinythemes)
+library(DT)
+library(scales)
+```
+
+
+
+Originl data set consists of five files corresponding to the five boroughs of NYC: Manhattan, Bronx, Brooklyn, Queens and Staten Island. so the first step of the cleaning is to combine 5 excel files into 1 dataframe named nyc.
+
+```{r warning = FALSE}
+setwd("/Users/mymacpro/Documents/PROJECTS/Shiny/NYC-Property-Sales-Shiny/rawdata")
+files = list.files(pattern="*.xls")
+read_files <- function(x) {
+  temp <- read_excel(x, col_types = c("numeric", "text", "text", "text", "numeric", 
+                                      "numeric", "numeric",  "text", "text", "text", 
+                                      "numeric", "numeric", "numeric", "numeric", 
+                                      "numeric", "numeric", "numeric", "text", 
+                                      "text", "numeric", "date"), 
+                     skip = 4)
+  return(temp)
+}
+nyc = do.call(rbind, lapply(files, read_files))
+
+```
+
+
+
+
+#### Exam and Clean Data
+
+##### Formating column names, borough names for easier future reference
+```{r}
+# change column names to lower case
+colnames(nyc) = tolower(names(nyc))
+# replace space in column names to .
+colnames(nyc) = sapply(colnames(nyc), function(x)gsub(" ", ".", x))
+# switch boro number to boro name for column 1
+nyc$borough[nyc$borough == 1] = "Manhattan"
+nyc$borough[nyc$borough == 2] = "Bronx"
+nyc$borough[nyc$borough == 3] = "Brooklyn"
+nyc$borough[nyc$borough == 4] = "Queens"
+nyc$borough[nyc$borough == 5] = "Staten Island"
+```
+
+##### Remove columns not used for analysis.
+* block/lot/ease-ment are used for tax purpsoes, does not affect sale. 
+* for sales analysis, this project only focused on tax class at time of sale, so remove other columns. 
+* about 30%-40% of the land/gross squre feet values are missing, for the scope and accuracy of the project, will not consider these two features.
+
+Add month column for formatted sales date
+```{r}
+nyc[c("block","lot","ease-ment", 
+      "tax.class.at.present",
+      "building.class.at.present",
+      "building.class.at.time.of.sale",
+      "land.square.feet",
+      "gross.square.feet")] = NULL
+
+
+# Add month column
+nyc = mutate(nyc, date = format(nyc$sale.date,"%Y/%m"))
+
+```
+
+##### Remove rows not used for analysis
+Tax class 4 contains mostly office buildings, fatories, largely skewed the result, so filter out and focuse on residential buildings
+```{r}
+nyc = nyc %>% filter(tax.class.at.time.of.sale != 4)
+
+# remove duplicates
+nyc = unique(nyc)
+```
+
+
+Clean out N/A values and sales price equals to 0. (sales price 0 due to transfer instead of sale)
+```{r}
+# remove sales price is NA
+nyc = nyc[!is.na(nyc$sale.price),]
+
+# remove 0 sales, 20330 rows
+length(nyc$sale.price[nyc$sale.price == 0])
+nyc = nyc[nyc$sale.price != 0,]
+```
+
+
+
+##### Rename neighborhood to match with geojson file for future mapping
+```{r}
+nyc = mutate(nyc,district=neighborhood)
+
+nyc$district[nyc$district == "ALPHABET CITY"] = "EAST VILLAGE"
+nyc$district[nyc$district %in% c("CLINTON","JAVITS CENTER","MIDTOWN WEST") ] = "HELL'S KITCHEN"
+nyc$district[nyc$district == "FASHION"] = "GRAMERCY"
+nyc$district[nyc$district == "FINANCIAL"] = "FINANCIAL DISTRICT"
+nyc$district[nyc$district == "FLATIRON"] = "FLATIRON DISTRICT"
+nyc$district[nyc$district == "GREENWICH VILLAGE-CENTRAL"] = "GREENWICH VILLAGE"
+nyc$district[nyc$district == "GREENWICH VILLAGE-WEST"] = "WEST VILLAGE"
+nyc$district[nyc$district %in% c("HARLEM-CENTRAL","HARLEM-UPPER","HARLEM-WEST") ] = "HARLEM"
+nyc$district[nyc$district == "HARLEM-EAST"] = "EAST HARLEM"
+nyc$district[nyc$district == "MANHATTAN VALLEY"] = "UPPER WEST SIDE"
+nyc$district[nyc$district == "MIDTOWN CBD"] = "THEATER DISTRICT"
+nyc$district[nyc$district == "MIDTOWN EAST"] = "MIDTOWN"
+nyc$district[nyc$district == "SOUTHBRIDGE"] = "TWO BRIDGES"
+nyc$district[nyc$district %in% c("UPPER EAST SIDE (59-79)","UPPER EAST SIDE (79-96)",
+                               "UPPER EAST SIDE (96-110)","UPPER WEST SIDE (59-79)",
+                               "UPPER WEST SIDE (79-96)","UPPER WEST SIDE (96-116)") ] = "UPPER EAST SIDE"
+nyc$district[nyc$district %in% c("WASHINGTON HEIGHTS LOWER","WASHINGTON HEIGHTS UPPER") ] = "WASHINGTON HEIGHTS"
+nyc$district[nyc$district == "FLUSHING MEADOW PARK"] = "FLUSHING MEADOWS CORONA PARK"
+nyc$district[nyc$district %in% c("FLUSHING-NORTH","FLUSHING-SOUTH") ] = "FLUSHING"
+nyc$district[nyc$district %in% c("WILLIAMSBURG-CENTRAL","WILLIAMSBURG-EAST",
+                               "WILLIAMSBURG-NORTH","WILLIAMSBURG-SOUTH") ] = "WILLIAMSBURG"
+nyc$district[nyc$district == "AIRPORT LA GUARDIA"] = "LAGUARDIA AIRPORT"
+
+# for output formating, change distric name to Cap
+toCap <- function(x) {
+  s <- strsplit(x, " ")[[1]]
+  paste(substring(s, 1, 1), tolower(substring(s, 2)),
+        sep = "", collapse = " ")
+}
+
+nyc['district']=sapply(nyc$district,toCap)
+nyc$district[nyc$district == 'Soho'] = 'SoHo'
+```
+
+
+
