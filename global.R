@@ -1,11 +1,7 @@
 ## global.R ##
-
-library(shinydashboard)
 library(readxl)
-library(googleVis)
 library(dplyr)
 library(ggplot2)
-library(ggmap)
 library(leaflet)
 library(rgdal) #read Geojson file
 library(tigris) #geo_join
