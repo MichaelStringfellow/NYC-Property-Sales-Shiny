@@ -8,4 +8,5 @@ NYC Department of Finance Rolling Sales Data:
 http://www1.nyc.gov/site/finance/taxes/property-rolling-sales-data.page
 
 
-Link to Shiny App:
+Link to Shiny App:  
+https://phoebezhou.shinyapps.io/nyc-property-sales-shiny/
